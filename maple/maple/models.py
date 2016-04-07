@@ -6,7 +6,7 @@
 # Author:JiangLin
 # Mail:xiyang0807@gmail.com
 # Created Time: 2016-04-04 13:50:54
-# Last Update: 2016-04-04 16:49:29
+# Last Update: 2016-04-04 19:58:59
 #          By: jianglin
 # Description:
 #*************************************************************************
@@ -29,13 +29,6 @@ class News(Base):
     url = Column(String(100),unique=True,nullable=False)
     time = Column(DateTime,nullable=False)
     content = Column(Text,nullable=False)
-
-class BsNews(Base):
-    __tablename__ = 'bsnews'
-    id = Column(Integer, primary_key=True)
-    title = Column(String(60),nullable=False)
-    url = Column(String(100),unique=True,nullable=False)
-    time = Column(DateTime,nullable=False)
-    content = Column(Text,nullable=False)
+    category = Column(String(20),nullable=False)
 
 Base.metadata.create_all(engine)

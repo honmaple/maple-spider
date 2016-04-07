@@ -18,9 +18,5 @@ class NewsItem(scrapy.Item):
     url = scrapy.Field()
     time = scrapy.Field()
     content = scrapy.Field()
+    category = scrapy.Field()
 
-class BsNewsItem(scrapy.Item):
-    title = scrapy.Field()
-    url = scrapy.Field()
-    time = scrapy.Field()
-    content = scrapy.Field()
