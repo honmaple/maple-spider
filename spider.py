@@ -6,12 +6,14 @@
 # Author: jianglin
 # Email: xiyang0807@gmail.com
 # Created: 2017-03-03 15:23:53 (CST)
-# Last Update:星期日 2017-3-5 0:13:54 (CST)
+# Last Update:星期日 2017-3-5 1:39:2 (CST)
 #          By:
 # Description:
 # **************************************************************************
 from urllib.request import Request, urlopen
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
+from socket import timeout
+
 from bs4 import BeautifulSoup
 from queue import Queue
 from random import choice
@@ -21,6 +23,7 @@ import logging
 import sqlite3
 import os
 import time
+import pickle
 
 
 def ProgressBar(itera,
@@ -51,12 +54,10 @@ class showProgress(threading.Thread):
         while True:
             _max = max(self.queue.unfinished_tasks, _max)
             i = _max - self.queue.unfinished_tasks + 1
+            if _max == 0:
+                _max = 1
             ProgressBar(
-                i,
-                _max,
-                prefix='爬虫:',
-                suffix='(%s/%s)' % (i, _max),
-                length=48)
+                i, _max, prefix='爬虫:', suffix='(%s/%s)' % (i, _max), length=48)
             time.sleep(0.1)
             if self.queue.unfinished_tasks == 0:
                 break
@@ -118,27 +119,26 @@ class Sql(object):
         self.create()
 
     def create(self):
+        logger.debug('正在创建数据表spider')
         try:
-            self.db.execute('''CREATE TABLE SPIDER
-                (ID INT PRIMARY KEY     NOT NULL,
-                URL           VARCHAR(512)  NOT NULL,
-                KEY           VARCHAR(512)  NOT NULL,
-                CONTENT       VARCHAR(1024) NOT NULL);''')
+            self.db.execute('''CREATE TABLE IF NOT EXISTS SPIDER (
+                 ID INTEGER PRIMARY KEY  AUTOINCREMENT,
+                 URL           VARCHAR(512)  NOT NULL,
+                 KEY           VARCHAR(512)  NOT NULL,
+                 CONTENT       TEXT NOT NULL);''')
         except sqlite3.OperationalError:
             logger.error('数据库创建错误')
 
     def insert(self, url, key, content):
         logger.debug('正在插入数据url:%s key:%s content:%s' % (url, key, 's'))
+        content = pickle.dumps(content)
         try:
             self.cursor.execute(
-                'INSERT INTO SPIDER(URL,KEY,CONTENT) VALUES(%s, %s, %s)' %
+                "INSERT INTO SPIDER (URL,KEY,CONTENT) VALUES (?, ?, ?)",
                 (url, key, content))
             self.db.commit()
         except sqlite3.OperationalError:
             logging.error('插入 ' + url + ' 数据错误')
-
-    def __exit__(self):
-        self.db.close()
 
 
 class Handle(object):
@@ -152,7 +152,8 @@ class Handle(object):
 
     def _has_key(self, url, key, content):
         '''对有关键词页面的处理'''
-        self.sql.insert(url, key, content)
+        with self.sql.db:
+            self.sql.insert(url, key, content)
 
     def __call__(self, **kwargs):
         if self.has_key:
@@ -194,28 +195,36 @@ class Spider(object):
 
     def init(self, url):
         '''初始化爬虫'''
+        self.used_urls.add(url)
         request = Request(url, headers=self.headers)
         try:
-            response = urlopen(request)
-            return response.read().decode('utf-8', 'ignore')
-        except Exception:
+            response = urlopen(request, timeout=10)
+            return response.read()
+        except (HTTPError, URLError) as e:
+            logger.error(e.reason)
+            return ''
+        except timeout:
+            logger.error('timeout %s' % url)
             return ''
 
     def parse(self, url, deep):
         '''对爬虫内容进行解析'''
-        logger.info('当前url: %s' % url)
-        logger.info('当前deep: %s' % deep)
+        logger.info('当前url: %s deep:%s' % (url, deep))
         if deep == 0:
             return
         deep -= 1
         has_key = False
         content = self.init(url)
+        content = content.decode('utf-8', 'ignore')
         bp = BeautifulSoup(content, 'lxml')
+        # if self.key and self.key in content:
         if self.key and bp.find(text=self.key):
             has_key = True
             self.haskey_urls.add(url)
+        lock.acquire()
         handle = Handle(has_key, self.sql)
         handle(url=url, key=self.key, content=content)
+        lock.release()
         if deep > 0:
             urls = self.parse_url(bp)
             self.parse_thread(urls, deep)
@@ -229,13 +238,13 @@ class Spider(object):
             if _url and not _url.startswith('#') and _url != 'javascript:;':
                 if not _url.startswith('http'):
                     _url = host + _url
+                    self.url = _url
                 urls.add(_url)
         urls = self.used_urls & urls ^ urls
         return urls
 
     def parse_thread(self, urls, deep):
         for u in urls:
-            self.used_urls.add(u)
             self.pool.add_thread(self.parse, args=(u, deep))
 
     def run(self):
@@ -253,7 +262,7 @@ class Spider(object):
 @click.option('-dbfile', default='spider.db', help='sql file name')
 @click.option('-key', default=None, help='spider keywords')
 def main(url, deep, logfile, loglevel, testself, thread, dbfile, key):
-    global logger, mutex
+    global logger, lock
     logLevel = {
         1: logging.DEBUG,
         2: logging.ERROR,
@@ -261,21 +270,22 @@ def main(url, deep, logfile, loglevel, testself, thread, dbfile, key):
         4: logging.INFO,
         5: logging.CRITICAL,
     }
-    logging.basicConfig(level=logLevel[loglevel])
+    logging.basicConfig(filename=logfile, level=logLevel[loglevel])
     logger = logging.getLogger()
     sql = None
     start = time.time()
     if key is not None:
         sql = Sql(dbfile)
+        key = key.split(',')
     pool = ThreadPool(thread)
-    mutex = threading.Lock()
+    lock = threading.Lock()
     spider = Spider(url, deep, key, sql, pool)
     spider.run()
     pool.create_thread()
     showProgress(pool.queue)
     pool.wait()
     end = time.time()
-    print(end - start)
+    print('\n', end - start)
 
 
 if __name__ == '__main__':
