@@ -6,14 +6,14 @@
 # Author: jianglin
 # Email: xiyang0807@gmail.com
 # Created: 2017-03-03 15:23:53 (CST)
-# Last Update:星期日 2017-3-5 1:39:2 (CST)
-#          By:
-# Description:
+# Last Update:星期日 2017-3-5 20:3:1 (CST)
+#          By: jianglin
+# Description: a spider.usage: python spider.py --help
 # **************************************************************************
 from urllib.request import Request, urlopen
+from urllib.parse import urlparse
 from urllib.error import HTTPError, URLError
 from socket import timeout
-
 from bs4 import BeautifulSoup
 from queue import Queue
 from random import choice
@@ -33,14 +33,15 @@ def ProgressBar(itera,
                 decimals=0,
                 length=100,
                 fill='█'):
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (itera /
-                                                            float(total)))
-    filledLength = int(length * itera // total)
-    bar = fill * filledLength + '-' * (length - filledLength)
-    print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end='\r')
-    # Print New Line on Complete
-    if itera == total:
-        print()
+    if total > 0:
+        percent = ("{0:." + str(decimals) + "f}").format(100 * (itera /
+                                                                float(total)))
+        filledLength = int(length * itera // total)
+        bar = fill * filledLength + '-' * (length - filledLength)
+        print('\r%s |%s| %s%% %s' % (prefix, bar, percent, suffix), end='\r')
+        # Print New Line on Complete
+        if itera == total:
+            print()
 
 
 class showProgress(threading.Thread):
@@ -51,20 +52,16 @@ class showProgress(threading.Thread):
 
     def run(self):
         _max = 0
-        while True:
+        while not self.queue.empty():
             _max = max(self.queue.unfinished_tasks, _max)
-            i = _max - self.queue.unfinished_tasks + 1
-            if _max == 0:
-                _max = 1
+            i = _max - self.queue.unfinished_tasks
             ProgressBar(
                 i, _max, prefix='爬虫:', suffix='(%s/%s)' % (i, _max), length=48)
-            time.sleep(0.1)
-            if self.queue.unfinished_tasks == 0:
-                break
+            time.sleep(10)
 
 
 class ThreadPool(object):
-    '''线程池'''
+    '''线程池实现'''
 
     def __init__(self, num):
         self.num = num
@@ -93,6 +90,7 @@ class SpiderThread(threading.Thread):
         self.start()
 
     def run(self):
+        # 重启线程
         # while True:
         #     if self.queue.empty():
         #         if self.i >= 3:
@@ -110,10 +108,10 @@ class Sql(object):
     __slots__ = ('db', 'cursor')
 
     def __init__(self, dbfile):
-        # 检测文件名是否合法
+        # 检测文件名是否合法,只允许当前目录及tmp
         dirname, dbname = os.path.split(dbfile)
         if dirname and dirname != '/tmp':
-            raise
+            raise ValueError
         self.db = sqlite3.connect(dbfile, check_same_thread=False)
         self.cursor = self.db.cursor()
         self.create()
@@ -130,15 +128,22 @@ class Sql(object):
             logger.error('数据库创建错误')
 
     def insert(self, url, key, content):
-        logger.debug('正在插入数据url:%s key:%s content:%s' % (url, key, 's'))
+        logger.debug('正在插入数据url:%s key:%s' % (url, key))
+        key = ','.join(key)
         content = pickle.dumps(content)
-        try:
-            self.cursor.execute(
-                "INSERT INTO SPIDER (URL,KEY,CONTENT) VALUES (?, ?, ?)",
-                (url, key, content))
-            self.db.commit()
-        except sqlite3.OperationalError:
-            logging.error('插入 ' + url + ' 数据错误')
+        if not self.select(url, key):
+            try:
+                self.cursor.execute(
+                    "INSERT INTO SPIDER (URL,KEY,CONTENT) VALUES (?, ?, ?)",
+                    (url, key, content))
+                self.db.commit()
+            except (sqlite3.OperationalError):
+                logging.error('插入 ' + url + ' 数据错误')
+
+    def select(self, url, key):
+        c = self.cursor.execute(
+            "SELECT ID FROM SPIDER WHERE URL=? AND KEY = ?", (url, key))
+        return c.fetchone()
 
 
 class Handle(object):
@@ -147,11 +152,25 @@ class Handle(object):
         self.sql = sql
 
     def _no_key(self, url, key, content):
-        '''对无关键词页面的处理'''
-        pass
+        '''
+        对无关键词页面的处理:下载到本地
+        对于爬虫可能需要判断文件是否存在
+        '''
+        url = urlparse(url)
+        key = ','.join(key)
+        path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), 'download',
+            url.netloc.replace('.', '-'))
+        if not os.path.exists(path):
+            os.makedirs(path)
+        name = url.netloc + url.path
+        file = os.path.join(path, name.replace('/', '-') + '.html')
+        if not os.path.exists(file):
+            with open(file, 'w+') as f:
+                f.write(content)
 
     def _has_key(self, url, key, content):
-        '''对有关键词页面的处理'''
+        '''对有关键词页面的处理:保存到数据库'''
         with self.sql.db:
             self.sql.insert(url, key, content)
 
@@ -190,8 +209,10 @@ class Spider(object):
         '''
         获取host
         '''
-        request = Request(self.url)
-        return 'http://' + request.host
+        url = urlparse(self.url)
+        return 'http://' + url.netloc
+        # request = Request(self.url)
+        # return 'http://' + request.host
 
     def init(self, url):
         '''初始化爬虫'''
@@ -201,21 +222,29 @@ class Spider(object):
             response = urlopen(request, timeout=10)
             return response.read()
         except (HTTPError, URLError) as e:
-            logger.error(e.reason)
+            logger.error('爬取失败%s ,原因:%s' % (url, e.reason))
             return ''
         except timeout:
-            logger.error('timeout %s' % url)
+            logger.error('爬取失败:%s ,原因:timeout' % url)
+            return ''
+        except Exception as e:
+            logger.error('爬取失败%s ,原因:%s' % (url, e))
             return ''
 
     def parse(self, url, deep):
         '''对爬虫内容进行解析'''
-        logger.info('当前url: %s deep:%s' % (url, deep))
+        logger.info('正在抓取url: %s deep:%s' % (url, self.deep - deep + 1))
         if deep == 0:
             return
         deep -= 1
         has_key = False
         content = self.init(url)
-        content = content.decode('utf-8', 'ignore')
+        try:
+            content = content.decode('gbk')
+        except UnicodeDecodeError:
+            content = content.decode('utf-8', 'ignore')
+        except AttributeError:
+            content = content
         bp = BeautifulSoup(content, 'lxml')
         # if self.key and self.key in content:
         if self.key and bp.find(text=self.key):
@@ -233,9 +262,11 @@ class Spider(object):
         '''找出但前页面所有的a节点'''
         urls = set()
         host = self.host
+        exclude_urls = ['javascript:;', 'javascript:void 0;']
         for i in bp.find_all('a'):
             _url = i.get('href')
-            if _url and not _url.startswith('#') and _url != 'javascript:;':
+            # 忽略单页应用及javascript操作的href
+            if _url and not _url.startswith('#') and _url not in exclude_urls:
                 if not _url.startswith('http'):
                     _url = host + _url
                     self.url = _url
@@ -244,6 +275,7 @@ class Spider(object):
         return urls
 
     def parse_thread(self, urls, deep):
+        '''增加至队列'''
         for u in urls:
             self.pool.add_thread(self.parse, args=(u, deep))
 
@@ -256,24 +288,23 @@ class Spider(object):
     '-u', '--url', default='http://www.sina.com.cn/', help='spider start url')
 @click.option('-d', '--deep', default=2, help='spider deep')
 @click.option('-f', '--logfile', default='spider.log', help='log file name')
-@click.option('-l', '--loglevel', default=1, help='log level')
-@click.option('-testself', default=1, help='test')
-@click.option('-thread', default=10, help='thread pool size')
-@click.option('-dbfile', default='spider.db', help='sql file name')
-@click.option('-key', default=None, help='spider keywords')
+@click.option('-l', '--loglevel', default=5, help='log level')
+@click.option('-t', '--thread', default=10, help='thread pool size')
+@click.option('-k', '--key', default=None, help='spider keywords')
+@click.option('--dbfile', default='spider.db', help='sql file name')
+@click.option('--testself', default=False, help='test')
 def main(url, deep, logfile, loglevel, testself, thread, dbfile, key):
     global logger, lock
     logLevel = {
-        1: logging.DEBUG,
+        1: logging.CRITICAL,
         2: logging.ERROR,
         3: logging.WARNING,
         4: logging.INFO,
-        5: logging.CRITICAL,
+        5: logging.DEBUG
     }
     logging.basicConfig(filename=logfile, level=logLevel[loglevel])
     logger = logging.getLogger()
     sql = None
-    start = time.time()
     if key is not None:
         sql = Sql(dbfile)
         key = key.split(',')
@@ -284,8 +315,6 @@ def main(url, deep, logfile, loglevel, testself, thread, dbfile, key):
     pool.create_thread()
     showProgress(pool.queue)
     pool.wait()
-    end = time.time()
-    print('\n', end - start)
 
 
 if __name__ == '__main__':
