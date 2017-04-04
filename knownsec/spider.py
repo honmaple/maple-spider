@@ -6,7 +6,7 @@
 # Author: jianglin
 # Email: xiyang0807@gmail.com
 # Created: 2017-03-03 15:23:53 (CST)
-# Last Update:星期日 2017-3-5 20:3:1 (CST)
+# Last Update:星期六 2017-3-11 13:41:53 (CST)
 #          By: jianglin
 # Description: a spider.usage: python spider.py --help
 # **************************************************************************
@@ -52,12 +52,17 @@ class showProgress(threading.Thread):
 
     def run(self):
         _max = 0
-        while not self.queue.empty():
+        while True:
             _max = max(self.queue.unfinished_tasks, _max)
             i = _max - self.queue.unfinished_tasks
             ProgressBar(
                 i, _max, prefix='爬虫:', suffix='(%s/%s)' % (i, _max), length=48)
-            time.sleep(10)
+            time.sleep(0.1)
+            if self.queue.unfinished_tasks == 0:
+                i += 1
+                ProgressBar(
+                    i, _max, prefix='爬虫:', suffix='(%s/%s)' % (i, _max), length=48)
+                break
 
 
 class ThreadPool(object):
