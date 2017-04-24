@@ -6,7 +6,7 @@
 # Author: jianglin
 # Email: xiyang0807@gmail.com
 # Created: 2017-04-04 16:58:39 (CST)
-# Last Update:星期五 2017-4-7 23:30:16 (CST)
+# Last Update:星期四 2017-4-13 0:57:11 (CST)
 #          By:
 # Description:
 # **************************************************************************
@@ -100,7 +100,7 @@ class Spider(object):
         selector = html.fromstring(content)
         text = selector.xpath('//div[@class="nr_nr"]/div[@id="nr1"]/text()')
         text = '\n'.join(text)
-        with open('原始战记.txt', 'a') as f:
+        with open('天才相师.txt', 'a') as f:
             text = text.replace('\xa0', ' ')
             f.writelines('\n\n{}\n\n{}'.format(title, text))
         print(title, 'spider done.')
@@ -110,8 +110,8 @@ class Spider(object):
 
 
 if __name__ == '__main__':
-    pool = ThreadPool(50)
-    spider = Spider("http://m.biqugetw.com/1/1848/")
+    pool = ThreadPool(20)
+    spider = Spider("http://m.biqugetw.com/10/10632/")
     spider.start()
     pool.create_thread()
     pool.wait()
