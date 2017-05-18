@@ -6,8 +6,8 @@
 # Author: jianglin
 # Email: xiyang0807@gmail.com
 # Created: 2017-04-17 10:00:14 (CST)
-# Last Update:星期一 2017-4-17 13:47:9 (CST)
-#          By:
+# Last Update: 2017-05-03 20:14:12
+#          By: jianglin
 # Description:
 # **************************************************************************
 from random import randint
