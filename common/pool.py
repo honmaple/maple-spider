@@ -6,7 +6,7 @@
 # Author: jianglin
 # Email: xiyang0807@gmail.com
 # Created: 2017-05-18 14:11:28 (CST)
-# Last Update:星期五 2017-5-19 1:53:41 (CST)
+# Last Update:星期一 2017-5-22 21:29:38 (CST)
 #          By:
 # Description:
 # **************************************************************************
@@ -31,7 +31,7 @@ class _ThreadPoolExecutor(ThreadPoolExecutor):
                 name=thread_name,
                 target=_worker,
                 args=(weakref.ref(self, weakref_cb), self._work_queue))
-            # t.daemon = True
+            t.daemon = True
             t.start()
             self._threads.add(t)
             _threads_queues[t] = self._work_queue
@@ -51,10 +51,11 @@ class ThreadPool(object):
 
     def add_thread(self, target, args=()):
         result = self.thread_pool.submit(target, *args)
-        # self.result_queue.put(result)
+        return result
 
     def add_process(self, target, args=()):
-        self.process_pool.submit(target, *args)
+        result = self.process_pool.submit(target, *args)
+        return result
 
     def map(self, target, urls=[]):
         self.process_pool.map(target, urls)
