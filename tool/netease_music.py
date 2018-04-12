@@ -6,7 +6,7 @@
 # Author: jianglin
 # Email: xiyang0807@gmail.com
 # Created: 2017-05-18 16:26:02 (CST)
-# Last Update:星期五 2017-5-19 19:13:30 (CST)
+# Last Update:星期二 2017-6-13 16:59:28 (CST)
 #          By:
 # Description:
 # **************************************************************************
@@ -80,8 +80,17 @@ class Spider(SpiderMixin):
 
 
 if __name__ == '__main__':
-    for i in range(0, 42):
+    pool = ThreadPool(process_num=10)
+
+    def start(i):
         spider = Spider(
             'http://music.163.com/discover/playlist/?order=hot&cat=%E5%8F%A4%E9%A3%8E&limit=35&offset={}'.
             format(i * 35))
         spider.start()
+
+    for i in range(0, 42):
+        pool.add_process(start, (i, ))
+        # spider = Spider(
+        #     'http://music.163.com/discover/playlist/?order=hot&cat=%E5%8F%A4%E9%A3%8E&limit=35&offset={}'.
+        #     format(i * 35))
+        # spider.start()

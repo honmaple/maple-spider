@@ -6,7 +6,7 @@
 # Author: jianglin
 # Email: xiyang0807@gmail.com
 # Created: 2017-05-18 14:11:28 (CST)
-# Last Update:星期一 2017-5-22 21:29:38 (CST)
+# Last Update:星期二 2017-7-18 14:56:43 (CST)
 #          By:
 # Description:
 # **************************************************************************
@@ -19,6 +19,11 @@ from concurrent.futures.thread import _worker, weakref, _threads_queues
 
 
 class _ThreadPoolExecutor(ThreadPoolExecutor):
+    def __init__(self, max_workers=None, thread_name_prefix='', daemon=True):
+        super(_ThreadPoolExecutor, self).__init__(max_workers,
+                                                  thread_name_prefix)
+        self._thread_daemon = daemon
+
     def _adjust_thread_count(self):
         def weakref_cb(_, q=self._work_queue):
             q.put(None)
@@ -31,7 +36,7 @@ class _ThreadPoolExecutor(ThreadPoolExecutor):
                 name=thread_name,
                 target=_worker,
                 args=(weakref.ref(self, weakref_cb), self._work_queue))
-            t.daemon = True
+            t.daemon = self._thread_daemon
             t.start()
             self._threads.add(t)
             _threads_queues[t] = self._work_queue
@@ -40,14 +45,13 @@ class _ThreadPoolExecutor(ThreadPoolExecutor):
 class ThreadPool(object):
     '''线程池实现'''
 
-    def __init__(self, thread_num=1, process_num=1, q_size=2000):
-        self.thread_pool = _ThreadPoolExecutor(thread_num)
+    def __init__(self, thread_num=1, process_num=1, q_size=2000, daemon=True):
+        self.thread_pool = _ThreadPoolExecutor(thread_num, daemon)
         self.process_pool = ProcessPoolExecutor(process_num)
         self.result_queue = Queue(q_size)
-        self.threads = []
 
-    def wait(self):
-        thread_wait(self.threads)
+    def wait(self, threads=[]):
+        thread_wait(threads)
 
     def add_thread(self, target, args=()):
         result = self.thread_pool.submit(target, *args)
@@ -57,5 +61,11 @@ class ThreadPool(object):
         result = self.process_pool.submit(target, *args)
         return result
 
-    def map(self, target, urls=[]):
-        self.process_pool.map(target, urls)
+    def thread_map(self, target, args=[]):
+        return [self.thread_pool.submit(target, arg) for arg in args]
+
+    def process_map(self, target, args=[]):
+        return self.process_pool.map(target, args)
+
+    def map(self, target, args=[]):
+        return self.process_map(target, args)

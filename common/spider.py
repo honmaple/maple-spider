@@ -6,7 +6,7 @@
 # Author: jianglin
 # Email: xiyang0807@gmail.com
 # Created: 2017-04-17 10:09:17 (CST)
-# Last Update:星期一 2017-5-22 19:13:50 (CST)
+# Last Update:星期六 2017-9-23 11:47:0 (CST)
 #          By:
 # Description:
 # **************************************************************************
@@ -21,6 +21,7 @@ from requests.exceptions import (ConnectionError, HTTPError, RequestException,
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import types
 
 from lxml import html
 
@@ -81,9 +82,8 @@ class SpiderMixin(object):
 class SpiderSQL(object):
     Base = declarative_base()
 
-    def __init__(self, table):
-        self.engine = create_engine(
-            'postgresql://postgres:password@localhost/spider')
+    def __init__(self, sql):
+        self.engine = create_engine(sql)
         self.session = sessionmaker(bind=self.engine)()
 
     def create(self, tablename=None):
@@ -97,3 +97,7 @@ class SpiderSQL(object):
 
     def table(self):
         pass
+
+
+# class SpiderItem(types):
+#     pass
